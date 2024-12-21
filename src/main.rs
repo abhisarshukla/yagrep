@@ -18,6 +18,7 @@ struct CliApp {
     pattern: String,
     path: std::path::PathBuf,
     ignored_paths: std::cell::RefCell<Vec<std::path::PathBuf>>,
+    writer: std::cell::RefCell<BufWriter<std::io::Stdout>>,
 }
 
 impl CliApp {
@@ -48,6 +49,7 @@ impl CliApp {
             pattern,
             path,
             ignored_paths: std::cell::RefCell::new(Vec::new()),
+            writer: std::cell::RefCell::new(BufWriter::new(std::io::stdout())),
         })
     }
 
@@ -116,7 +118,7 @@ fn main() {
 
     match (path.is_file(), path.is_dir()) {
         (true, false) => {
-            match_file(&re, &path);
+            match_file(&re, &path, &app);
         }
         (false, true) => {
             match_directory(&re, &path, &app).unwrap();
@@ -128,7 +130,7 @@ fn main() {
     }
 }
 
-fn match_file(regex: &Regex, path: &std::path::Path) {
+fn match_file(regex: &Regex, path: &std::path::Path, app: &CliApp) {
     let contents = match std::fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(_err) => {
@@ -136,7 +138,7 @@ fn match_file(regex: &Regex, path: &std::path::Path) {
         }
     };
 
-    let mut writer = BufWriter::new(std::io::stdout());
+    let mut writer = app.writer.borrow_mut();
     let mut matches = contents
         .lines()
         .enumerate()
@@ -148,6 +150,7 @@ fn match_file(regex: &Regex, path: &std::path::Path) {
     for (index, line) in matches {
         write!(writer, "{}: {}\n", index + 1, line).unwrap();
     }
+    writer.flush().unwrap();
 }
 
 fn match_directory(
@@ -181,7 +184,7 @@ fn match_directory(
             }
         }
         if path.is_file() {
-            match_file(regex, &path);
+            match_file(regex, &path, app);
         } else if path.is_dir() {
             match_directory(regex, &path, app)?;
         }
