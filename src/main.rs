@@ -94,7 +94,7 @@ fn main() {
     let app = match CliApp::new(params) {
         Ok(app) => app,
         Err(err) => {
-            println!("{}", err);
+            eprintln!("{}", err);
             return;
         }
     };
@@ -109,7 +109,7 @@ fn main() {
     let re = match regex_builder.build() {
         Ok(re) => re,
         Err(err) => {
-            println!("Error compiling regex: {}", err);
+            eprintln!("Error: Failed to compile regex: {}", err);
             return;
         }
     };
@@ -119,10 +119,10 @@ fn main() {
             match_file(&re, &path);
         }
         (false, true) => {
-            match_directory(&re, &path, &app);
+            match_directory(&re, &path, &app).unwrap();
         }
         (false, false) => {
-            println!("Error: File not found");
+            eprintln!("Error: File not found");
         }
         _ => {}
     }
@@ -137,7 +137,6 @@ fn match_file(regex: &Regex, path: &std::path::Path) {
     };
 
     let mut writer = BufWriter::new(std::io::stdout());
-    // let mut writer = std::io::LineWriter::new(writer);
     let mut matches = contents
         .lines()
         .enumerate()
@@ -151,9 +150,13 @@ fn match_file(regex: &Regex, path: &std::path::Path) {
     }
 }
 
-fn match_directory(regex: &Regex, directory: &std::path::Path, app: &CliApp) {
-    for entry in std::fs::read_dir(directory).expect("Failed to read directory") {
-        let entry = entry.expect("Failed to read directory entry");
+fn match_directory(
+    regex: &Regex,
+    directory: &std::path::Path,
+    app: &CliApp,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
         let path = entry.path();
         if !app.has_option(CliOptions::IgnoreNoHiddenFiles)
             && path.file_name().unwrap().to_str().unwrap().starts_with(".")
@@ -172,9 +175,7 @@ fn match_directory(regex: &Regex, directory: &std::path::Path, app: &CliApp) {
             let git_root = git_root(&path);
             if let Some(git_root) = &git_root {
                 if is_git_ignore(git_root, &path) == Some(true) {
-                    app.ignored_paths
-                        .borrow_mut()
-                        .push(std::path::PathBuf::from(&path));
+                    app.ignored_paths.borrow_mut().push(path.to_path_buf());
                     continue;
                 }
             }
@@ -182,9 +183,10 @@ fn match_directory(regex: &Regex, directory: &std::path::Path, app: &CliApp) {
         if path.is_file() {
             match_file(regex, &path);
         } else if path.is_dir() {
-            match_directory(regex, &path, app);
+            match_directory(regex, &path, app)?;
         }
     }
+    Ok(())
 }
 
 fn get_full_path(path: &str) -> std::path::PathBuf {
@@ -193,7 +195,7 @@ fn get_full_path(path: &str) -> std::path::PathBuf {
         .next()
         .expect("Failed to get first character of path")
     {
-        '/' => std::path::PathBuf::new().join(path),
+        '/' => std::path::PathBuf::from(path),
         _ => {
             let current_dir = std::env::current_dir().expect("Failed to get current directory");
             current_dir.join(path)
