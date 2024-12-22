@@ -3,7 +3,7 @@ use std::io::{BufWriter, Write};
 use colored::*;
 use regex::{Regex, RegexBuilder};
 
-const USAGE: &'static str = "Usage: yagrep [options] <pattern> <file>";
+const USAGE: &str = "Usage: yagrep [options] <pattern> <file>";
 
 #[derive(PartialEq)]
 enum CliOptions {
@@ -33,7 +33,7 @@ impl CliApp {
         let options = args
             .iter()
             .filter(|&arg| arg.starts_with("-"))
-            .map(|arg| {
+            .flat_map(|arg| {
                 arg.as_str().chars().map(|c| match c {
                     'i' => CliOptions::IgnoreCase,
                     'g' => CliOptions::IgnoreGitIgnore,
@@ -41,7 +41,6 @@ impl CliApp {
                     _ => CliOptions::Empty,
                 })
             })
-            .flatten()
             .collect();
 
         Ok(CliApp {
@@ -69,7 +68,7 @@ fn is_git_ignore(git_dir_path: &std::path::Path, path: &std::path::Path) -> Opti
         Ok(output) => output,
         Err(_) => return None,
     };
-    output.status.success().then(|| Some(true))?
+    output.status.success().then_some(Some(true))?
 }
 
 fn git_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -118,10 +117,10 @@ fn main() {
 
     match (path.is_file(), path.is_dir()) {
         (true, false) => {
-            match_file(&re, &path, &app);
+            match_file(&re, path, &app);
         }
         (false, true) => {
-            match_directory(&re, &path, &app).unwrap();
+            match_directory(&re, path, &app).unwrap();
         }
         (false, false) => {
             eprintln!("Error: File not found");
@@ -145,10 +144,10 @@ fn match_file(regex: &Regex, path: &std::path::Path, app: &CliApp) {
         .filter(|(_index, line)| regex.is_match(line))
         .peekable();
     if matches.peek().is_some() {
-        write!(writer, "{}\n", path.display().to_string().green()).unwrap();
+        writeln!(writer, "{}", path.display().to_string().green()).unwrap();
     }
     for (index, line) in matches {
-        write!(writer, "{}: {}\n", index + 1, line).unwrap();
+        writeln!(writer, "{}: {}", index + 1, line).unwrap();
     }
     writer.flush().unwrap();
 }
